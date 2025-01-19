@@ -1,0 +1,304 @@
+import React, { useState, useRef } from 'react';
+// Thumbtack Component
+const Thumbtack = () => (
+  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-30" style={{ filter: 'drop-shadow(2px 2px 2px rgba(0,0,0,0.3))' }}>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      {/* Head of the thumbtack */}
+      <circle cx="12" cy="8" r="6" fill="#D32F2F" />
+      <circle cx="12" cy="8" r="4" fill="#B71C1C" />
+      {/* Pin part */}
+      <path d="M11 14L12 22L13 14" fill="#666666" />
+    </svg>
+  </div>
+);
+const MysteryBoard = () => {
+  const boardRef = useRef(null);
+  const [images, setImages] = useState([]);
+  const [connections, setConnections] = useState([]);
+  const [selectedImages, setSelectedImages] = useState([]);
+  const [connectionText, setConnectionText] = useState('');
+  const [isModalVisible, setModalVisible] = useState(false);
+  const [isDragging, setIsDragging] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isConnecting, setIsConnecting] = useState(false);
+  const pickImage = () => {
+    if (images.length >= 10) {
+      alert('Maximum 10 images allowed on the board!');
+      return;
+    }
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const newImage = {
+            uri: reader.result,
+            x: Math.random() * (window.innerWidth - 200),
+            y: Math.random() * (window.innerHeight - 200),
+            width: 200,
+            height: 250,
+          };
+          setImages([...images, newImage]);
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    fileInput.click();
+  };
+  const startConnection = (index) => {
+    setIsConnecting(true);
+    setSelectedImages([index]);
+  };
+  const handleImageSelection = (index) => {
+    if (isConnecting) {
+      if (selectedImages[0] === index) {
+        setIsConnecting(false);
+        setSelectedImages([]);
+      } else if (selectedImages.length === 1) {
+        setSelectedImages([...selectedImages, index]);
+        setModalVisible(true);
+      }
+    }
+  };
+  const createConnection = () => {
+    if (selectedImages.length === 2) {
+      const newConnection = {
+        from: selectedImages[0],
+        to: selectedImages[1],
+        text: connectionText
+      };
+      setConnections([...connections, newConnection]);
+      setSelectedImages([]);
+      setConnectionText('');
+      setModalVisible(false);
+      setIsConnecting(false);
+    }
+  };
+  const startDrag = (index, e) => {
+    e.stopPropagation();
+    if (!isConnecting) {
+      setIsDragging(index);
+      const rect = e.currentTarget.getBoundingClientRect();
+      setDragOffset({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      });
+    }
+  };
+  const handleDrag = (e) => {
+    if (isDragging !== null && boardRef.current) {
+      const boardRect = boardRef.current.getBoundingClientRect();
+      const newX = e.clientX - dragOffset.x - boardRect.left;
+      const newY = e.clientY - dragOffset.y - boardRect.top;
+      
+      const updatedImages = [...images];
+      updatedImages[isDragging] = {
+        ...updatedImages[isDragging],
+        x: Math.max(0, Math.min(boardRect.width - updatedImages[isDragging].width, newX)),
+        y: Math.max(0, Math.min(boardRect.height - updatedImages[isDragging].height, newY))
+      };
+      setImages(updatedImages);
+    }
+  };
+  const stopDrag = () => {
+    setIsDragging(null);
+  };
+  const deleteImage = (index, e) => {
+    e.stopPropagation();
+    const updatedConnections = connections.filter(
+      conn => conn.from !== index && conn.to !== index
+    );
+    setConnections(updatedConnections);
+    setImages(images.filter((_, i) => i !== index));
+    setSelectedImages(selectedImages.filter(i => i !== index));
+  };
+  const resizeImage = (index, factor) => {
+    const updatedImages = [...images];
+    const image = updatedImages[index];
+    const newWidth = Math.max(100, Math.min(400, image.width * factor));
+    const newHeight = Math.max(125, Math.min(500, image.height * factor));
+    
+    updatedImages[index] = {
+      ...image,
+      width: newWidth,
+      height: newHeight
+    };
+    setImages(updatedImages);
+  };
+  return (
+    <div className="relative w-full h-screen" style={{ backgroundColor: '#523A28' }}>
+      <div 
+        ref={boardRef}
+        className="absolute inset-4 overflow-hidden"
+        style={{
+          backgroundColor: '#C4A484',
+          boxShadow: 'inset 0 0 20px rgba(0,0,0,0.3)',
+          border: '20px solid #523A28'
+        }}
+        onMouseMove={handleDrag}
+        onMouseUp={stopDrag}
+        onMouseLeave={stopDrag}
+      >
+        {isConnecting && (
+          <div className="fixed top-5 left-1/2 transform -translate-x-1/2 bg-yellow-100 text-black px-4 py-2 rounded z-50">
+            Select an image to connect with
+          </div>
+        )}
+        {/* Connection Lines */}
+        <div className="absolute inset-0 z-10">
+          <svg width="100%" height="100%" style={{ position: 'absolute' }}>
+            {connections.map((connection, index) => {
+              const fromImage = images[connection.from];
+              const toImage = images[connection.to];
+              if (!fromImage || !toImage) return null;
+              const fromX = fromImage.x + (fromImage.width / 2);
+              const fromY = fromImage.y + (fromImage.height / 2);
+              const toX = toImage.x + (toImage.width / 2);
+              const toY = toImage.y + (toImage.height / 2);
+              const midX = (fromX + toX) / 2;
+              const midY = (fromY + toY) / 2;
+              return (
+                <g key={index}>
+                  <line 
+                    x1={fromX}
+                    y1={fromY}
+                    x2={toX}
+                    y2={toY}
+                    stroke="red"
+                    strokeWidth="3"
+                  />
+                  <text
+                    x={midX}
+                    y={midY}
+                    dy="-10"
+                    textAnchor="middle"
+                    fill="white"
+                    fontSize="14"
+                    style={{
+                      filter: 'drop-shadow(0px 0px 2px black)',
+                      backgroundColor: 'rgba(0,0,0,0.5)',
+                      padding: '2px'
+                    }}
+                  >
+                    {connection.text}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+        {/* Polaroid Images with Thumbtacks */}
+        {images.map((image, index) => (
+          <div
+            key={index}
+            className={`absolute bg-white p-2.5 shadow-lg border-4 z-20 ${
+              selectedImages.includes(index) ? 'border-yellow-500' : 'border-white'
+            } ${isConnecting && !selectedImages.includes(index) ? 'cursor-pointer' : 'cursor-move'}`}
+            style={{
+              left: `${image.x}px`,
+              top: `${image.y}px`,
+              width: `${image.width}px`,
+              height: `${image.height}px`,
+            }}
+            onMouseDown={(e) => startDrag(index, e)}
+            onClick={() => handleImageSelection(index)}
+          >
+            {/* Thumbtack */}
+            <Thumbtack />
+            
+            <img
+              src={image.uri}
+              alt={`Evidence ${index + 1}`}
+              className="w-full h-[75%] object-cover"
+              draggable="false"
+            />
+            <div className="h-[25%] flex flex-col justify-between items-center bg-white px-2">
+              <p className="text-black font-bold text-sm">Evidence {index + 1}</p>
+              <div className="flex gap-2 w-full justify-between mb-1">
+                <div className="flex gap-1">
+                  <button
+                    className="text-blue-500 hover:text-blue-700 focus:outline-none text-sm px-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      resizeImage(index, 1.1);
+                    }}
+                  >
+                    +
+                  </button>
+                  <button
+                    className="text-blue-500 hover:text-blue-700 focus:outline-none text-sm px-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      resizeImage(index, 0.9);
+                    }}
+                  >
+                    -
+                  </button>
+                </div>
+                <button
+                  className="text-green-600 hover:text-green-700 focus:outline-none text-sm px-2 py-0.5 border border-green-600 rounded"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startConnection(index);
+                  }}
+                >
+                  Connect
+                </button>
+                <button
+                  className="text-red-500 hover:text-red-700 focus:outline-none text-sm px-1"
+                  onClick={(e) => deleteImage(index, e)}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {/* Add Evidence Button */}
+        <button
+          className="fixed bottom-5 right-5 bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 z-30"
+          onClick={pickImage}
+        >
+          + Add Evidence
+        </button>
+        {/* Connection Modal */}
+        {isModalVisible && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white p-6 rounded-lg w-96">
+              <h2 className="text-xl font-bold mb-4">Connection Details</h2>
+              <input
+                type="text"
+                placeholder="Enter connection description"
+                value={connectionText}
+                onChange={(e) => setConnectionText(e.target.value)}
+                className="w-full border border-gray-300 p-2 mb-4 rounded"
+              />
+              <div className="flex justify-between">
+                <button
+                  className="bg-green-500 text-white px-4 py-2 rounded"
+                  onClick={createConnection}
+                >
+                  Create Connection
+                </button>
+                <button
+                  className="bg-gray-300 text-black px-4 py-2 rounded"
+                  onClick={() => {
+                    setModalVisible(false);
+                    setSelectedImages([]);
+                    setIsConnecting(false);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+export default MysteryBoard;
